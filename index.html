@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF CSV Processor</title>
+    <style>
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+
+        table, th, td {
+            border: 1px solid black;
+            padding: 8px;
+            text-align: left;
+        }
+
+        th {
+            background-color: #f2f2f2;
+        }
+
+        .error-message {
+            color: red;
+        }
+
+        #results {
+            margin-top: 20px;
+        }
+
+        .loading {
+            font-size: 1.2em;
+            color: #007bff;
+        }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.4.0/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+</head>
+<body>
+    <h1>Upload your PDF</h1>
+    <form id="uploadForm" method="POST" enctype="multipart/form-data">
+        <input type="file" name="file" accept=".pdf" required>
+        <input type="submit" value="Upload">
+        <button id="exportPdf">Export to PDF</button>
+    </form>
+
+    
+
+    <div id="results"></div>
+
+    <script>
+        const form = document.getElementById('uploadForm');
+        const resultsDiv = document.getElementById('results');
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            resultsDiv.innerHTML = '<p class="loading">Processing...</p>';
+
+            const file = form.elements.file.files[0];
+            const formData = new FormData();
+            formData.append('file', file);
+
+            try {
+                const response = await fetch('/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await response.json();
+
+                if (data.error) {
+                    resultsDiv.innerHTML = `<p class="error-message">${data.error}</p>`;
+                } else {
+                    let html = '<h2>Metrics:</h2>';
+                    html += createTable(data.metrics);
+                    if (data.anomalies.length > 0) {
+                        html += '<h2>Anomalies:</h2>';
+                        html += createTable(data.anomalies);
+                    } else {
+                        html += '<p>No anomalies detected.</p>';
+                    }
+                    resultsDiv.innerHTML = html;
+                }
+            } catch (err) {
+                resultsDiv.innerHTML = `<p class="error-message">An unexpected error occurred: ${err.message}</p>`;
+            }
+        });
+
+        function createTable(data) {
+            let html = '<table>';
+            const columns = Object.keys(data[0]);
+            html += '<thead><tr>';
+            columns.forEach(col => html += `<th>${col}</th>`);
+            html += '</tr></thead>';
+            html += '<tbody>';
+            data.forEach(row => {
+                html += '<tr>';
+                columns.forEach(col => html += `<td>${row[col] || ''}</td>`);
+                html += '</tr>';
+            });
+            html += '</tbody></table>';
+            return html;
+        }
+
+        document.getElementById('exportPdf').addEventListener('click', async () => {
+            const { jsPDF } = window.jspdf;
+
+            const resultsDiv = document.getElementById('results');
+
+            try {
+                const canvas = await html2canvas(resultsDiv, { scale: 2 });
+                const imgData = canvas.toDataURL('image/png');
+                const pdf = new jsPDF('p', 'mm', 'a4');
+                const pdfWidth = pdf.internal.pageSize.getWidth();
+                const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+
+                pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+                pdf.save('Financial_Analysis_Report.pdf');
+            } catch (error) {
+                console.error('Error exporting to PDF:', error);
+                alert('Failed to export PDF. Please try again.');
+            }
+        });
+    </script>
+</body>
+</html>
